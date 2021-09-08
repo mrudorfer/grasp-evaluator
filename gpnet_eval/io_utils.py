@@ -147,7 +147,7 @@ def read_nms_poses_file(filename):
     This reads the "nms_poses_view0.txt" file created after using NMS.
     It is equal to the "readShapePoses(fname)" function which can be found in a couple of files...
 
-    Retuns a dict with shape names as key and list of grasps as values.
+    Retuns a dict with shape names as key and ndarray of grasps as values (pos, quat)
     Depending on which file type it is, it may have an additional score value.
     """
     shape_poses = {}
@@ -160,6 +160,10 @@ def read_nms_poses_file(filename):
             else:
                 grasp = np.array(l.strip().split(',')).astype(float).reshape(1, -1)
                 shape_poses[shape].append(grasp)
+
+    for shape, grasp_list in shape_poses.items():
+        grasps = np.concatenate(grasp_list)
+        shape_poses[shape] = grasps
 
     return shape_poses
 
