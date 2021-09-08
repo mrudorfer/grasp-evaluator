@@ -3,6 +3,7 @@ import argparse
 import tempfile
 
 import numpy as np
+from tqdm import tqdm
 
 # try importing simulation
 try:
@@ -14,6 +15,7 @@ except ImportError:
 
 from . import metrics
 from . import io_utils
+from . import tools
 
 
 def check_all_the_shit_works(dataset_root, test_dir):
@@ -45,16 +47,20 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
 
     shapes = io_utils.read_test_shapes(dataset_root)
     epoch_list = io_utils.get_epochs_and_views(test_dir)
-    print(f'parsed directory: {test_dir}\nepochs and views:\n  {epoch_list}')
+    print(f'test directory: {test_dir}')
+    print('detected epochs and views:')
+    for epoch, views in epoch_list:
+        print(f'   epoch{epoch}: views: {views}')
 
     all_results_list = []
 
     for epoch, views in epoch_list:
         for view in views:
-            print(f'**\nepoch: {epoch}, view: {view}')
+            print(f'***\nepoch: {epoch}, view: {view}')
             # load predictions (assuming all of these are sorted with decreasing confidence)
             if nms:
                 nms_fn = os.path.join(test_dir, f'epoch{epoch}', f'nms_poses_view{view}.txt')
+                # nms_fn = os.path.join(test_dir, f'epoch{epoch}', f'nms_poses_with_score.txt')
                 grasp_predictions = io_utils.read_nms_poses_file(nms_fn)
                 # predictions do not have a score, i.e. length 7
             else:
@@ -65,10 +71,10 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
             n_grasps = 0
             for key, grasps in grasp_predictions.items():
                 n_grasps += len(grasps)
+            print(f'got {n_grasps} grasp predictions')
 
             # produce simulation results (for all shapes combined should be much faster, because of parallelisation)
             if use_sim:
-                print(f'simulating {n_grasps} grasp predictions')
                 open(sim_file, 'w').close()  # clear file
                 io_utils.write_shape_poses_file(grasp_predictions, sim_file, with_score=not nms)
                 gpnet_sim.simulate(sim_config)
@@ -90,11 +96,15 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
             view_results['view'] = view
             idx = 0
 
-            for shape in shapes:
+            print('computing rule-based success...')
+            for shape in tqdm(shapes):
+                if shape not in grasp_predictions.keys():
+                    print(f'WARNING: no predictions for shape {shape}')
+                    continue
                 preds = grasp_predictions[shape]
 
                 view_results['shape'][idx:idx+len(preds)] = shape
-                if nms:
+                if preds.shape[1] < 8:
                     # no confidence available
                     view_results['prediction_confidence'][idx:idx + len(preds)] = 0
                 else:
@@ -117,8 +127,66 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
     all_results = np.concatenate(all_results_list)
     save_file = os.path.join(test_dir, 'evaluation_results.npy')
     np.save(save_file, all_results)
-    print(f'finished. stored all results in {save_file}')
+    print(f'finished.\nstored all results in {save_file}')
 
     # clean up tmp file
     os.close(sim_file_handle)
     os.remove(sim_file)
+
+
+def per_shape_stats(dataset_root, test_dir):
+    """
+    computes the success rates of the predictions with score above k%, aggregated across views, but separate for each
+    epoch.
+    requires the confidence values, which are usually not part of the nms_poses_view0.txt files!
+
+    :param dataset_root: dataset base directory
+    :param test_dir: directory containing the evaluation file (evaluation_results.npy)
+
+    :return:
+    """
+    shapes = io_utils.read_test_shapes(dataset_root)
+
+    log_fn = os.path.join(test_dir, 'per_shape_stats.txt')
+    with open(log_fn, 'w') as log:
+        log.write(test_dir)
+        log.write('\n')
+
+    data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))
+    epochs = np.unique(data['epoch'])
+    for epoch in epochs:
+        mask = data['epoch'] == epoch
+        epoch_data = data[mask]
+
+        all_precisions_sim = []
+        all_precisions_rb = []
+        all_k_values = []
+
+        for shape in shapes:
+            mask = np.array(epoch_data['shape'], dtype='<U32') == shape
+            shape_data = epoch_data[mask]
+
+            sim_success = shape_data['simulation_result'] == 0
+            confidence = shape_data['prediction_confidence']  # may not be provided
+
+            precision_at_k_sim, k_values = metrics.precision_at_k_score(sim_success, confidence)
+            precision_at_k_rb, _ = metrics.precision_at_k_score(shape_data['rule_based_success'], confidence)
+
+            with open(log_fn, 'a') as log:
+                write_items = [[f'epoch{epoch}', shape], k_values, precision_at_k_sim, precision_at_k_rb]
+                write_items = tools.flatten_nested_list(write_items)
+                log.write(tools.log_line(write_items))
+
+            all_k_values.append(np.array(k_values))
+            all_precisions_sim.append(np.array(precision_at_k_sim))
+            all_precisions_rb.append(np.array(precision_at_k_rb))
+
+        all_precisions_rb = np.nanmean(np.array(all_precisions_rb), axis=0)
+        all_precisions_sim = np.nanmean(np.array(all_precisions_sim), axis=0)
+        all_k_values = np.mean(np.array(all_k_values), axis=0)
+        with open(log_fn, 'a') as log:
+            write_items = [[f'epoch{epoch}', 'avg'], all_k_values, all_precisions_sim, all_precisions_rb]
+            write_items = tools.flatten_nested_list(write_items)
+            log.write(tools.log_line(write_items))
+            log.write('\n')
+

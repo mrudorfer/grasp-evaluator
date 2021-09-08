@@ -182,6 +182,10 @@ def precision_at_k_percent(labels, k_percent_list=None):
     if k_percent_list is None:
         k_percent_list = [0.1, 0.3, 0.5, 1.0]
 
+    if len(labels) == 0:
+        # no predictions for this shape
+        return [np.nan]*len(k_percent_list), [0]*len(k_percent_list)
+
     precisions = []
     k_numbers = []
     for k_percent in k_percent_list:
@@ -198,14 +202,14 @@ def precision_at_k_score(labels, scores, k_score_list=None):
     """
     For a given pair of labels and scores, we will compute the precision above a certain score level.
     The label is the success (0/1) and the scores the confidence values ([0, 1])
-    k_score_list defaults to [0.9, 0.7, 0.5]
+    k_score_list defaults to [0.95, 0.9, 0.75, 0.5]
 
     returns list of precisions and list of k_numbers
     """
     assert len(labels) == len(scores)
 
     if k_score_list is None:
-        k_score_list = [0.9, 0.7, 0.5]
+        k_score_list = [0.95, 0.9, 0.75, 0.5]
 
     precisions = []
     k_numbers = []
