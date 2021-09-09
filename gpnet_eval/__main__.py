@@ -35,3 +35,8 @@ if __name__ == "__main__":
         # '/home/rudorfem/dev/exp_GPNet_Deco/multi_view_epochs/gpnet'
         #'/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test'
     )
+
+    evaluate.standard_statistics(
+        arguments.dataset_root,
+        arguments.test_dir
+    )

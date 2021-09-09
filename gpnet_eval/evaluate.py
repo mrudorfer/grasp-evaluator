@@ -12,7 +12,6 @@ except ImportError:
     gpnet_sim = None
     print('Warning: package gpnet_sim not found. Please install from https://github.com/mrudorfer/GPNet-simulator')
 
-
 from . import metrics
 from . import io_utils
 from . import tools
@@ -103,7 +102,7 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
                     continue
                 preds = grasp_predictions[shape]
 
-                view_results['shape'][idx:idx+len(preds)] = shape
+                view_results['shape'][idx:idx + len(preds)] = shape
                 if preds.shape[1] < 8:
                     # no confidence available
                     view_results['prediction_confidence'][idx:idx + len(preds)] = 0
@@ -121,8 +120,9 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
                 rb_success = metrics.rule_based_eval(gt_grasps, preds)
                 view_results['rule_based_success'][idx:idx + len(preds)] = rb_success
 
-                all_results_list.append(view_results)
                 idx += len(preds)
+
+            all_results_list.append(view_results)
 
     all_results = np.concatenate(all_results_list)
     save_file = os.path.join(test_dir, 'evaluation_results.npy')
@@ -150,6 +150,7 @@ def per_shape_stats(dataset_root, test_dir):
     log_fn = os.path.join(test_dir, 'per_shape_stats.txt')
     with open(log_fn, 'w') as log:
         log.write(test_dir)
+        log.write('rule based results with predictions that have score above k%, aggregated over all views of a shape')
         log.write('\n')
 
     data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))
@@ -162,6 +163,14 @@ def per_shape_stats(dataset_root, test_dir):
         all_precisions_rb = []
         all_k_values = []
 
+        k_steps = [0.95, 0.9, 0.75, 0.5]
+        with open(log_fn, 'a') as log:
+            headers = [['epoch'], ['shape'],
+                       [f't{k}_k' for k in k_steps],
+                       [f't{k}_sim' for k in k_steps],
+                       [f't{k}_rb' for k in k_steps]]
+            log.write(tools.log_line(tools.flatten_nested_list(headers)))
+
         for shape in shapes:
             mask = np.array(epoch_data['shape'], dtype='<U32') == shape
             shape_data = epoch_data[mask]
@@ -169,11 +178,12 @@ def per_shape_stats(dataset_root, test_dir):
             sim_success = shape_data['simulation_result'] == 0
             confidence = shape_data['prediction_confidence']  # may not be provided
 
-            precision_at_k_sim, k_values = metrics.precision_at_k_score(sim_success, confidence)
-            precision_at_k_rb, _ = metrics.precision_at_k_score(shape_data['rule_based_success'], confidence)
+            precision_at_k_sim, k_values = metrics.precision_at_k_score(sim_success, confidence, k_score_list=k_steps)
+            precision_at_k_rb, _ = metrics.precision_at_k_score(shape_data['rule_based_success'], confidence,
+                                                                k_score_list=k_steps)
 
             with open(log_fn, 'a') as log:
-                write_items = [[f'epoch{epoch}', shape], k_values, precision_at_k_sim, precision_at_k_rb]
+                write_items = [[epoch, shape], k_values, precision_at_k_sim, precision_at_k_rb]
                 write_items = tools.flatten_nested_list(write_items)
                 log.write(tools.log_line(write_items))
 
@@ -185,8 +195,89 @@ def per_shape_stats(dataset_root, test_dir):
         all_precisions_sim = np.nanmean(np.array(all_precisions_sim), axis=0)
         all_k_values = np.mean(np.array(all_k_values), axis=0)
         with open(log_fn, 'a') as log:
-            write_items = [[f'epoch{epoch}', 'avg'], all_k_values, all_precisions_sim, all_precisions_rb]
+            write_items = [[epoch, 'avg'], all_k_values, all_precisions_sim, all_precisions_rb]
             write_items = tools.flatten_nested_list(write_items)
             log.write(tools.log_line(write_items))
             log.write('\n')
 
+    print('stored per shape statistics in per_shape_stats.txt')
+
+
+def standard_statistics(dataset_root, test_dir):
+    """
+    computes the regular topk% rule-based and simulation success rates for each epoch/view.
+
+    :param dataset_root: dataset base directory
+    :param test_dir: directory containing the evaluation file (evaluation_results.npy)
+
+    :return:
+    """
+    shapes = io_utils.read_test_shapes(dataset_root)
+    k_steps = [0.1, 0.3, 0.5, 1.0]
+
+    log_fn = os.path.join(test_dir, 'standard_stats.txt')
+    with open(log_fn, 'w') as log:
+        log.write(test_dir)
+        log.write('rule based results with topk% predictions, averaged over all shapes')
+        log.write('\n')
+
+        headers = [['epoch'], ['view'],
+                   [f't{k}_k' for k in k_steps],
+                   [f't{k}_sim' for k in k_steps],
+                   [f't{k}_rb' for k in k_steps]]
+        log.write(tools.log_line(tools.flatten_nested_list(headers)))
+
+    data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))
+    epochs = np.unique(data['epoch'])
+    for epoch in epochs:
+        mask = data['epoch'] == epoch
+        epoch_data = data[mask]
+        views = np.unique(epoch_data['view'])
+
+        all_precisions_sim = []
+        all_precisions_rb = []
+        all_k_values = []
+
+        for view in views:
+            mask = epoch_data['view'] == view
+            view_data = epoch_data[mask]
+
+            view_precisions_sim = []
+            view_precisions_rb = []
+            view_k_values = []
+
+            for shape in shapes:
+                mask = np.array(view_data['shape'], dtype='<U32') == shape
+                shape_data = view_data[mask]
+
+                sim_success = shape_data['simulation_result'] == 0
+                precision_at_k_sim, k_values = metrics.precision_at_k_percent(sim_success, k_percent_list=k_steps)
+                precision_at_k_rb, _ = metrics.precision_at_k_percent(shape_data['rule_based_success'],
+                                                                      k_percent_list=k_steps)
+                view_k_values.append(np.array(k_values))
+                view_precisions_rb.append(np.array(precision_at_k_rb))
+                view_precisions_sim.append(np.array(precision_at_k_sim))
+
+            view_precisions_rb = np.nanmean(np.array(view_precisions_rb), axis=0)
+            view_precisions_sim = np.nanmean(np.array(view_precisions_sim), axis=0)
+            view_k_values = np.mean(np.array(view_k_values), axis=0)
+
+            with open(log_fn, 'a') as log:
+                write_items = [[epoch, view], view_k_values, view_precisions_sim, view_precisions_rb]
+                write_items = tools.flatten_nested_list(write_items)
+                log.write(tools.log_line(write_items))
+
+            all_k_values.append(view_k_values)
+            all_precisions_sim.append(view_precisions_sim)
+            all_precisions_rb.append(view_precisions_rb)
+
+        all_precisions_rb = np.nanmean(np.array(all_precisions_rb), axis=0)
+        all_precisions_sim = np.nanmean(np.array(all_precisions_sim), axis=0)
+        all_k_values = np.mean(np.array(all_k_values), axis=0)
+        with open(log_fn, 'a') as log:
+            write_items = [[epoch, 'avg'], all_k_values, all_precisions_sim, all_precisions_rb]
+            write_items = tools.flatten_nested_list(write_items)
+            log.write(tools.log_line(write_items))
+            log.write('\n')
+
+    print('stored standard statistics in standard_stats.txt')
