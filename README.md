@@ -42,8 +42,9 @@ optional arguments:
                         root directory of the GPNet dataset
   -TD TEST_DIR, --test_dir TEST_DIR
                         test folder of the network (containing epoch dirs)
-  --nms                 use this option to use "nms_poses_view0.txt" file instead of all
-                        predictions (npz files)
+  --nms                 use this option to use "nms_poses_view0.txt" file instead of all predictions (npz files)
   --no_sim              use this option to skip simulation results (only rule-based evaluation)
+  -OMD OBJECT_MODELS_DIR, --object_models_dir OBJECT_MODELS_DIR
+                        if other than GPNet models, please provide path to urdf files of objects.
   --stats_only
 ```

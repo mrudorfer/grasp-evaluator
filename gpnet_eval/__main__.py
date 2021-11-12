@@ -12,6 +12,8 @@ def parse_args():
                         help='use this option to use "nms_poses_view0.txt" file instead of all predictions (npz files)')
     parser.add_argument('--no_sim', action='store_false', dest='use_sim',
                         help='use this option to skip simulation results (only rule-based evaluation)')
+    parser.add_argument('-OMD', '--object_models_dir', type=str,
+                        help='if other than GPNet models, please provide path to urdf files of objects.')
     parser.add_argument('--stats_only', action='store_true')
     return parser.parse_args()
 
@@ -26,7 +28,8 @@ if __name__ == "__main__":
             #'/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test',
             arguments.test_dir,
             arguments.nms,
-            arguments.use_sim
+            arguments.use_sim,
+            arguments.object_models_dir
         )
 
     evaluate.per_shape_stats(

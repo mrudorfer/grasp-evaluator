@@ -1,5 +1,4 @@
 import os
-import argparse
 import tempfile
 
 import numpy as np
@@ -32,7 +31,7 @@ def check_all_the_shit_works(dataset_root, test_dir):
     print(f'parsed directory: {test_dir}\nlooked for epochs and views. found the following:\n{epoch_list}')
 
 
-def evaluate(dataset_root, test_dir, nms, use_sim):
+def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None):
     # this creates a temporary file in the tmp dir of the operating system
     # we use it as interface to simulation
     sim_file_handle, sim_file = tempfile.mkstemp(suffix='.txt', text=True)
@@ -43,6 +42,8 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
         sim_config = gpnet_sim.default_conf()
         sim_config.z_move = True
         sim_config.testFile = sim_file
+        if object_models_dir is not None:
+            sim_config.objMeshRoot = object_models_dir
 
     shapes = io_utils.read_test_shapes(dataset_root)
     epoch_list = io_utils.get_epochs_and_views(test_dir)
