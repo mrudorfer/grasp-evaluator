@@ -31,7 +31,7 @@ def check_all_the_shit_works(dataset_root, test_dir):
     print(f'parsed directory: {test_dir}\nlooked for epochs and views. found the following:\n{epoch_list}')
 
 
-def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None):
+def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, coverage=False):
     # this creates a temporary file in the tmp dir of the operating system
     # we use it as interface to simulation
     sim_file_handle, sim_file = tempfile.mkstemp(suffix='.txt', text=True)
@@ -83,16 +83,17 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None):
                 # dict with shape as key, and grasp array
                 # (n, 10): 0:3 pos, 3:7 quat, annotation id, sim result, sim success, empty
 
-            view_results = np.empty(n_grasps,
-                                    dtype=([
-                                        ('epoch', np.uint16),
-                                        ('view', np.uint16),
-                                        ('shape', 'S32'),
-                                        ('prediction_confidence', np.float),
-                                        ('simulation_result', np.uint8),
-                                        ('rule_based_success', np.bool),
-                                        ('rule_based_coverage', np.float)
-                                    ]))
+            result_type = ([
+                                ('epoch', np.uint16),
+                                ('view', np.uint16),
+                                ('shape', 'S32'),
+                                ('prediction_confidence', np.float),
+                                ('simulation_result', np.uint8),
+                                ('rule_based_success', np.bool)
+                            ])
+            if coverage:
+                result_type.append(('rule_based_coverage', np.float))
+            view_results = np.empty(n_grasps, dtype=result_type)
             view_results['epoch'] = epoch
             view_results['view'] = view
             idx = 0
@@ -119,9 +120,12 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None):
 
                 # compute rule based success
                 gt_grasps = io_utils.load_gt_grasps(dataset_root, shape, which='positives')
-                rb_success, cumulated_coverage = metrics.rule_based_eval(gt_grasps, preds, coverage=True)
+                if coverage:
+                    rb_success, cumulated_coverage = metrics.rule_based_eval(gt_grasps, preds, coverage=True)
+                    view_results['rule_based_coverage'][idx:idx + len(preds)] = cumulated_coverage
+                else:
+                    rb_success = metrics.rule_based_eval(gt_grasps, preds, coverage=False)
                 view_results['rule_based_success'][idx:idx + len(preds)] = rb_success
-                view_results['rule_based_coverage'][idx:idx + len(preds)] = cumulated_coverage
 
                 idx += len(preds)
 
@@ -222,8 +226,7 @@ def standard_statistics(dataset_root, test_dir):
     # check whether file has coverage data (has been added later, so we want to ensure backwards compatibility)
     use_coverage = 'rule_based_coverage' in data.dtype.names
     if not use_coverage:
-        print('evaluation_results.npy does not provide coverage data. recreate it with newer version of GPNet-evaluator'
-              + ' if that is desired.')
+        print('note: evaluation_results.npy does not contain coverage data.')
 
     log_fn = os.path.join(test_dir, 'standard_stats.txt')
     with open(log_fn, 'w') as log:
@@ -282,7 +285,8 @@ def standard_statistics(dataset_root, test_dir):
             view_precisions_rb = np.nanmean(np.array(view_precisions_rb), axis=0)
             view_precisions_sim = np.nanmean(np.array(view_precisions_sim), axis=0)
             view_k_values = np.mean(np.array(view_k_values), axis=0)
-            view_coverage = np.nanmean(np.array(view_coverage), axis=0)
+            if use_coverage:
+                view_coverage = np.nanmean(np.array(view_coverage), axis=0)
 
             with open(log_fn, 'a') as log:
                 write_items = [[epoch, view], view_k_values, view_precisions_sim, view_precisions_rb]
@@ -299,10 +303,11 @@ def standard_statistics(dataset_root, test_dir):
         all_precisions_rb = np.nanmean(np.array(all_precisions_rb), axis=0)
         all_precisions_sim = np.nanmean(np.array(all_precisions_sim), axis=0)
         all_k_values = np.mean(np.array(all_k_values), axis=0)
-        all_coverage = np.nanmean(np.array(all_coverage), axis=0)
+        
         with open(log_fn, 'a') as log:
             write_items = [[epoch, 'avg'], all_k_values, all_precisions_sim, all_precisions_rb]
             if use_coverage:
+                all_coverage = np.nanmean(np.array(all_coverage), axis=0)
                 write_items.append(all_coverage)
             write_items = tools.flatten_nested_list(write_items)
             log.write(tools.log_line(write_items))
