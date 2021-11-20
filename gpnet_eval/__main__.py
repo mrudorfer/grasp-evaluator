@@ -22,8 +22,8 @@ if __name__ == "__main__":
     if not arguments.stats_only:
         evaluate.evaluate(
             arguments.dataset_root,
-            #'/home/rudorfem/dev/exp_GPNet_Deco/multi_view_epochs/gpnet',
-            #'/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test',
+            # '/home/rudorfem/dev/exp_GPNet_Deco/multi_view_epochs/gpnet',
+            # '/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test',
             arguments.test_dir,
             arguments.nms,
             arguments.use_sim
@@ -33,7 +33,7 @@ if __name__ == "__main__":
         arguments.dataset_root,
         arguments.test_dir
         # '/home/rudorfem/dev/exp_GPNet_Deco/multi_view_epochs/gpnet'
-        #'/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test'
+        # '/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test'
     )
 
     evaluate.standard_statistics(

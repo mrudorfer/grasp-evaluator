@@ -32,7 +32,7 @@ def check_all_the_shit_works(dataset_root, test_dir):
     print(f'parsed directory: {test_dir}\nlooked for epochs and views. found the following:\n{epoch_list}')
 
 
-def evaluate(dataset_root, test_dir, nms, use_sim):
+def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, coverage=False):
     # this creates a temporary file in the tmp dir of the operating system
     # we use it as interface to simulation
     sim_file_handle, sim_file = tempfile.mkstemp(suffix='.txt', text=True)
@@ -82,15 +82,17 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
                 # dict with shape as key, and grasp array
                 # (n, 10): 0:3 pos, 3:7 quat, annotation id, sim result, sim success, empty
 
-            view_results = np.empty(n_grasps,
-                                    dtype=([
-                                        ('epoch', np.uint16),
-                                        ('view', np.uint16),
-                                        ('shape', 'S32'),
-                                        ('prediction_confidence', np.float),
-                                        ('simulation_result', np.uint8),
-                                        ('rule_based_success', np.bool)
-                                    ]))
+            result_type = ([
+                ('epoch', np.uint16),
+                ('view', np.uint16),
+                ('shape', 'S32'),
+                ('prediction_confidence', np.float),
+                ('simulation_result', np.uint8),
+                ('rule_based_success', np.bool)
+            ])
+            if coverage:
+                result_type.append(('rule_based_coverage', np.float))
+            view_results = np.empty(n_grasps, dtype=result_type)
             view_results['epoch'] = epoch
             view_results['view'] = view
             idx = 0
@@ -110,6 +112,9 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
                     view_results['prediction_confidence'][idx:idx + len(preds)] = preds[:, 7]
 
                 if use_sim:
+                    if shape not in sim_grasp_results.keys():
+                        print(f'WARNING: no simulation results for shape {shape}')
+                        continue
                     view_results['simulation_result'][idx:idx + len(preds)] = sim_grasp_results[shape][:, 8]
                 else:
                     # this status flag is internal to gpnet_sim, should actually try to retrieve there
@@ -117,7 +122,11 @@ def evaluate(dataset_root, test_dir, nms, use_sim):
 
                 # compute rule based success
                 gt_grasps = io_utils.load_gt_grasps(dataset_root, shape, which='positives')
-                rb_success = metrics.rule_based_eval(gt_grasps, preds)
+                if coverage:
+                    rb_success, cumulated_coverage = metrics.rule_based_eval(gt_grasps, preds, coverage=True)
+                    view_results['rule_based_coverage'][idx:idx + len(preds)] = cumulated_coverage
+                else:
+                    rb_success = metrics.rule_based_eval(gt_grasps, preds, coverage=False)
                 view_results['rule_based_success'][idx:idx + len(preds)] = rb_success
 
                 idx += len(preds)
@@ -213,7 +222,7 @@ def standard_statistics(dataset_root, test_dir):
     :return:
     """
     shapes = io_utils.read_test_shapes(dataset_root)
-    k_steps = [0.1, 0.3, 0.5, 1.0]
+    k_steps = [0, 0.1, 0.3, 0.5, 1.0]
 
     log_fn = os.path.join(test_dir, 'standard_stats.txt')
     with open(log_fn, 'w') as log:
@@ -222,9 +231,9 @@ def standard_statistics(dataset_root, test_dir):
         log.write('\n')
 
         headers = [['epoch'], ['view'],
-                   [f't{k}_k' for k in k_steps],
-                   [f't{k}_sim' for k in k_steps],
-                   [f't{k}_rb' for k in k_steps]]
+                   ['best_k'], [f't{k}_k' for k in k_steps[1:]],
+                   ['best_sim'], [f't{k}_sim' for k in k_steps[1:]],
+                   ['best_rb'], [f't{k}_rb' for k in k_steps[1:]]]
         log.write(tools.log_line(tools.flatten_nested_list(headers)))
 
     data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))

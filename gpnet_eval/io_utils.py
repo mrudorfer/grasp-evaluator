@@ -24,7 +24,7 @@ def load_gt_grasps(dataset_root, shape, which='all'):
         if which == 'positives':
             indices = np.nonzero(labels)
         elif which == 'negatives':
-            indices = np.nonzero(1-labels)
+            indices = np.nonzero(1 - labels)
         else:
             raise ValueError(f'parameter "which" must be one of "all", "positives", "negatives", but got "{which}"')
         centers = centers[indices]
@@ -127,7 +127,7 @@ def read_sim_csv_file(filename, keep_num=None):
                 int(row[1]),  # annotation id
                 int(row[2]),  # simulation result
                 int(row[2]) == 0,  # simulation success flag
-                -1.   # left empty for rule-based success flag
+                -1.  # left empty for rule-based success flag
             ]
             counters[shape] += 1
 
@@ -183,7 +183,7 @@ def read_npz_files(npz_dir, limit=None):
             with np.load(fn) as data:
                 # sort by score
                 data_array = np.concatenate(
-                    [data['centers'], data['quaternions'], data['scores'].reshape(-1, 1)], axis=1)
+                    [data['centers'].reshape(-1, 3), data['quaternions'].reshape(-1, 4), data['scores'].reshape(-1, 1)], axis=1)
                 order = np.argsort(-data['scores'])
                 obj_dict[shape] = data_array[order][:limit]
 
