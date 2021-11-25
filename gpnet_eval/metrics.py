@@ -66,7 +66,7 @@ def pairwise_combined_distances(graspset1, graspset2):
     return distances
 
 
-def rule_based_eval(gt_grasps, predictions, d_th=0.025, q_th=np.pi/6):
+def rule_based_eval(gt_grasps, predictions, d_th=0.025, q_th=np.pi/6, coverage=False):
     """
     This is the rule-based evaluation as used in GPNet, i.e. only considering positive grasps.
 
@@ -76,10 +76,14 @@ def rule_based_eval(gt_grasps, predictions, d_th=0.025, q_th=np.pi/6):
     predictions: 0:3 pos, 3:7 quat
     d_th: distance threshold
     q_th: quaternion threshold
+    coverage: bool, whether to produce coverage of gt data as well. If True, we will assume predictions are in
+              descending order and for each prediction we will produce the cumulated coverage of GT grasps.
+              Note that this is not vectorised and may take a lot of time if len(predictions) is large.
 
     Returns
     -------
-    labels: bool array with True/False for each prediction
+    labels: bool array with True/False for each prediction; if coverage=True then also a float array with accumulated
+            coverage for each prediction (accumulated by all previous predictions including the current one)
     """
     # make sure to only use positive gt_grasps
     positives = gt_grasps[:, 0] == 1.0
@@ -91,21 +95,32 @@ def rule_based_eval(gt_grasps, predictions, d_th=0.025, q_th=np.pi/6):
     chunk_size = 3000  # might need adaptive chunk size
 
     list_of_bool_arrays = []
+    list_of_cov_arrays = []
+    gt_covered = None
+    if coverage:
+        gt_covered = np.full(len(gt_grasps), fill_value=False, dtype=bool)
+
     for prediction in chunks(predictions, chunk_size):
+        # separate thresholds for euclidean and angular distance
         cent_in_gt = pairwise_euclidean_distances(prediction[:, 0:3], gt_grasps[:, 1:4]) < d_th
         quat_in_gt = pairwise_angular_distances(prediction[:, 3:7], gt_grasps[:, 4:8]) < q_th
-        verbose = False
-        if verbose:
-            pred_in_gt = cent_in_gt * quat_in_gt
-            print('shape:', pred_in_gt.shape)
-            non_zeros = np.count_nonzero(pred_in_gt, axis=1)
-            print('non_zeros:', non_zeros.flatten())
-            pred_in_gt = np.any(pred_in_gt, 1)
-        else:
-            pred_in_gt = np.any(cent_in_gt * quat_in_gt, 1)
+        matches = cent_in_gt * quat_in_gt
+        pred_in_gt = np.any(matches, 1)
         list_of_bool_arrays.append(pred_in_gt)
 
-    return np.concatenate(list_of_bool_arrays).flatten()
+        if coverage:
+            # compute cumulated coverage, we track coverage status in gt_covered
+            cumulated_cov = np.empty(len(prediction), dtype=float)
+            for i in range(len(cumulated_cov)):
+                gt_covered |= matches[i]
+                cumulated_cov[i] = np.mean(gt_covered)
+            list_of_cov_arrays.append(cumulated_cov)
+
+    precision = np.concatenate(list_of_bool_arrays).flatten()
+    if coverage:
+        coverage = np.concatenate(list_of_cov_arrays).flatten()
+        return precision, coverage
+    return precision
 
 
 def knn_based_eval(gt_grasps, predictions, n=5, th=0.015):

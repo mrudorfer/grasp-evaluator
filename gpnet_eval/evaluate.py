@@ -1,5 +1,5 @@
 import os
-import argparse
+import shutil
 import tempfile
 
 import numpy as np
@@ -35,14 +35,14 @@ def check_all_the_shit_works(dataset_root, test_dir):
 def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, coverage=False):
     # this creates a temporary file in the tmp dir of the operating system
     # we use it as interface to simulation
-    sim_file_handle, sim_file = tempfile.mkstemp(suffix='.txt', text=True)
     sim_config = None
     if use_sim:
         if gpnet_sim is None:
             raise ImportError('cannot simulate grasp samples as package gpnet_sim is not loaded.')
         sim_config = gpnet_sim.default_conf()
         sim_config.z_move = True
-        sim_config.testFile = sim_file
+        if object_models_dir is not None:
+            sim_config.objMeshRoot = object_models_dir
 
     shapes = io_utils.read_test_shapes(dataset_root)
     epoch_list = io_utils.get_epochs_and_views(test_dir)
@@ -74,22 +74,25 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
 
             # produce simulation results (for all shapes combined should be much faster, because of parallelisation)
             if use_sim:
+                sim_file_handle, sim_file = tempfile.mkstemp(suffix='.txt', text=True)
+                sim_config.testFile = sim_file
                 open(sim_file, 'w').close()  # clear file
                 io_utils.write_shape_poses_file(grasp_predictions, sim_file, with_score=not nms)
                 gpnet_sim.simulate(sim_config)
                 sim_grasp_results = io_utils.read_sim_csv_file(sim_file[:-4] + '_log.csv')
-                os.remove(sim_file[:-4] + '_log.csv')
+                shutil.move(sim_file[:-4] + '_log.csv', os.path.join(test_dir, f'epoch{epoch}', f'nms_poses_view{view}_log.csv'))
+                # os.remove(sim_file[:-4] + '_log.csv')
                 # dict with shape as key, and grasp array
                 # (n, 10): 0:3 pos, 3:7 quat, annotation id, sim result, sim success, empty
 
             result_type = ([
-                ('epoch', np.uint16),
-                ('view', np.uint16),
-                ('shape', 'S32'),
-                ('prediction_confidence', np.float),
-                ('simulation_result', np.uint8),
-                ('rule_based_success', np.bool)
-            ])
+                                ('epoch', np.uint16),
+                                ('view', np.uint16),
+                                ('shape', 'S32'),
+                                ('prediction_confidence', np.float),
+                                ('simulation_result', np.uint8),
+                                ('rule_based_success', np.bool)
+                            ])
             if coverage:
                 result_type.append(('rule_based_coverage', np.float))
             view_results = np.empty(n_grasps, dtype=result_type)
@@ -224,6 +227,12 @@ def standard_statistics(dataset_root, test_dir):
     shapes = io_utils.read_test_shapes(dataset_root)
     k_steps = [0, 0.1, 0.3, 0.5, 1.0]
 
+    data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))
+    # check whether file has coverage data (has been added later, so we want to ensure backwards compatibility)
+    use_coverage = 'rule_based_coverage' in data.dtype.names
+    if not use_coverage:
+        print('note: evaluation_results.npy does not contain coverage data.')
+
     log_fn = os.path.join(test_dir, 'standard_stats.txt')
     with open(log_fn, 'w') as log:
         log.write(test_dir)
@@ -234,9 +243,11 @@ def standard_statistics(dataset_root, test_dir):
                    ['best_k'], [f't{k}_k' for k in k_steps[1:]],
                    ['best_sim'], [f't{k}_sim' for k in k_steps[1:]],
                    ['best_rb'], [f't{k}_rb' for k in k_steps[1:]]]
+        if use_coverage:
+            headers.append(['best_cov'])
+            headers.append([f't{k}_cov' for k in k_steps[1:]])
         log.write(tools.log_line(tools.flatten_nested_list(headers)))
 
-    data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))
     epochs = np.unique(data['epoch'])
     for epoch in epochs:
         mask = data['epoch'] == epoch
@@ -246,6 +257,7 @@ def standard_statistics(dataset_root, test_dir):
         all_precisions_sim = []
         all_precisions_rb = []
         all_k_values = []
+        all_coverage = []
 
         for view in views:
             mask = epoch_data['view'] == view
@@ -254,6 +266,7 @@ def standard_statistics(dataset_root, test_dir):
             view_precisions_sim = []
             view_precisions_rb = []
             view_k_values = []
+            view_coverage = []
 
             for shape in shapes:
                 mask = np.array(view_data['shape'], dtype='<U32') == shape
@@ -263,6 +276,14 @@ def standard_statistics(dataset_root, test_dir):
                 precision_at_k_sim, k_values = metrics.precision_at_k_percent(sim_success, k_percent_list=k_steps)
                 precision_at_k_rb, _ = metrics.precision_at_k_percent(shape_data['rule_based_success'],
                                                                       k_percent_list=k_steps)
+                if use_coverage:
+                    if k_values[0] == 0:  # all zeros, i.e. no predictions
+                        coverage_at_k = [np.nan]*len(k_steps)
+                    else:
+                        k_indices = np.array(k_values) - 1
+                        coverage_at_k = shape_data[k_indices]['rule_based_coverage']
+                    view_coverage.append(coverage_at_k)
+
                 view_k_values.append(np.array(k_values))
                 view_precisions_rb.append(np.array(precision_at_k_rb))
                 view_precisions_sim.append(np.array(precision_at_k_sim))
@@ -270,21 +291,30 @@ def standard_statistics(dataset_root, test_dir):
             view_precisions_rb = np.nanmean(np.array(view_precisions_rb), axis=0)
             view_precisions_sim = np.nanmean(np.array(view_precisions_sim), axis=0)
             view_k_values = np.mean(np.array(view_k_values), axis=0)
+            if use_coverage:
+                view_coverage = np.nanmean(np.array(view_coverage), axis=0)
 
             with open(log_fn, 'a') as log:
                 write_items = [[epoch, view], view_k_values, view_precisions_sim, view_precisions_rb]
+                if use_coverage:
+                    write_items.append(view_coverage)
                 write_items = tools.flatten_nested_list(write_items)
                 log.write(tools.log_line(write_items))
 
             all_k_values.append(view_k_values)
             all_precisions_sim.append(view_precisions_sim)
             all_precisions_rb.append(view_precisions_rb)
+            all_coverage.append(view_coverage)
 
         all_precisions_rb = np.nanmean(np.array(all_precisions_rb), axis=0)
         all_precisions_sim = np.nanmean(np.array(all_precisions_sim), axis=0)
         all_k_values = np.mean(np.array(all_k_values), axis=0)
+
         with open(log_fn, 'a') as log:
             write_items = [[epoch, 'avg'], all_k_values, all_precisions_sim, all_precisions_rb]
+            if use_coverage:
+                all_coverage = np.nanmean(np.array(all_coverage), axis=0)
+                write_items.append(all_coverage)
             write_items = tools.flatten_nested_list(write_items)
             log.write(tools.log_line(write_items))
             log.write('\n')
