@@ -125,12 +125,18 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
 
                 # compute rule based success
                 gt_grasps = io_utils.load_gt_grasps(dataset_root, shape, which='positives')
-                if coverage:
-                    rb_success, cumulated_coverage = metrics.rule_based_eval(gt_grasps, preds, coverage=True)
-                    view_results['rule_based_coverage'][idx:idx + len(preds)] = cumulated_coverage
-                else:
-                    rb_success = metrics.rule_based_eval(gt_grasps, preds, coverage=False)
-                view_results['rule_based_success'][idx:idx + len(preds)] = rb_success
+
+                if len(gt_grasps) == 0:  # there may be some weird shapes with no working GT grasps?
+                    if coverage:
+                        view_results['rule_based_coverage'][idx:idx + len(preds)] = np.nan
+                    view_results['rule_based_success'][idx:idx + len(preds)] = np.nan
+                else:  # this should be the default
+                    if coverage:
+                        rb_success, cumulated_coverage = metrics.rule_based_eval(gt_grasps, preds, coverage=True)
+                        view_results['rule_based_coverage'][idx:idx + len(preds)] = cumulated_coverage
+                    else:
+                        rb_success = metrics.rule_based_eval(gt_grasps, preds, coverage=False)
+                    view_results['rule_based_success'][idx:idx + len(preds)] = rb_success
 
                 idx += len(preds)
 
