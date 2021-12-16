@@ -114,7 +114,7 @@ def read_sim_csv_file(filename, keep_num=None):
                 sim_data[shape] = data_array
                 counters[shape] = 0
             elif counters[shape] == len(sim_data[shape]):
-                np.resize(sim_data[shape], (len(sim_data[shape]) + 10000, 11))
+                sim_data[shape] = np.resize(sim_data[shape], (len(sim_data[shape]) + 10000, 11))
 
             sim_data[shape][counters[shape]] = [
                 float(row[4]),  # pos: x, y, z
