@@ -17,7 +17,8 @@ from . import io_utils
 from . import tools
 
 
-def check_all_the_shit_works(dataset_root, test_dir):
+def check_directory_parsing(dataset_root, test_dir):
+    # use this to make sure the parsing of directories is correct and everything is found
     shapes = io_utils.read_test_shapes(dataset_root)
     print('read shapes:', shapes)
 
