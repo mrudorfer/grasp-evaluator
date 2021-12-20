@@ -124,9 +124,14 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
                     # this status flag is internal to gpnet_sim, should actually try to retrieve there
                     view_results['simulation_result'][idx:idx + len(preds)] = 7
 
-                # compute rule based success
-                gt_grasps = io_utils.load_gt_grasps(dataset_root, shape, which='positives')
+                # in order to support simulation-based results only as well, if no annotations available
+                try:
+                    gt_grasps = io_utils.load_gt_grasps(dataset_root, shape, which='positives')
+                except FileNotFoundError:
+                    print('WARNING: no ground truth annotation files found')
+                    gt_grasps = np.empty(0)
 
+                # compute rule based success
                 if len(gt_grasps) == 0:  # there may be some weird shapes with no working GT grasps?
                     if coverage:
                         view_results['rule_based_coverage'][idx:idx + len(preds)] = np.nan
