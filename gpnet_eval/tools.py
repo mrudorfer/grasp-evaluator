@@ -10,7 +10,7 @@ def flatten_nested_list(nested_list):
     return [item for sublist in nested_list for item in sublist]
 
 
-def log_line(item_list, delimiter='\t'):
+def log_line(item_list, delimiter=';'):
     """
     prepares items as a line for csv files, delimited by delimiter.
     :param item_list: list of objects that must have a str(object) function
