@@ -4,6 +4,7 @@ import tempfile
 
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 # try importing simulation
 try:
@@ -47,6 +48,9 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
 
     shapes = io_utils.read_test_shapes(dataset_root)
     epoch_list = io_utils.get_epochs_and_views(test_dir)
+
+    # todo temp
+    epoch_list = [epoch_list[0]]
     print(f'test directory: {test_dir}')
     print('detected epochs and views:')
     for epoch, views in epoch_list:
@@ -62,7 +66,7 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
                 nms_fn = os.path.join(test_dir, f'epoch{epoch}', f'nms_poses_view{view}.txt')
                 # nms_fn = os.path.join(test_dir, f'epoch{epoch}', f'nms_poses_with_score.txt')
                 grasp_predictions = io_utils.read_nms_poses_file(nms_fn)
-                # predictions do not have a score, i.e. length 7
+                # predictions may not have a score, i.e. length 7 or 8
             else:
                 npz_dir = os.path.join(test_dir, f'epoch{epoch}', f'view{view}')
                 grasp_predictions = io_utils.read_npz_files(npz_dir)
@@ -103,7 +107,7 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
 
             print('computing rule-based success...')
             for shape in tqdm(shapes):
-                if shape not in grasp_predictions.keys():
+                if shape not in grasp_predictions.keys() or len(grasp_predictions[shape]) == 0:
                     print(f'WARNING: no predictions for shape {shape}')
                     continue
                 preds = grasp_predictions[shape]
@@ -117,7 +121,7 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
 
                 if use_sim:
                     if shape not in sim_grasp_results.keys():
-                        print(f'WARNING: no simulation results for shape {shape}')
+                        print(f'WARNING: no simulation results for shape {shape} -- this is unexpected.')
                         continue
                     view_results['simulation_result'][idx:idx + len(preds)] = sim_grasp_results[shape][:, 8]
                 else:
@@ -332,3 +336,99 @@ def standard_statistics(dataset_root, test_dir):
             log.write('\n')
 
     print('stored standard statistics in standard_stats.txt')
+
+
+def precision_coverage_curve(dataset_root, test_dir, resolution=21):
+    """
+    creates precision coverage curves aggregated over all views of a specific epoch
+
+    :param dataset_root: dataset base directory
+    :param test_dir: directory containing the evaluation file (evaluation_results.npy)
+    :param resolution: number of coverage steps from 0.0 to 1.0, e.g. 101 means compute precision at every 0.01 cov
+
+    :return:
+    """
+    data = np.load(os.path.join(test_dir, 'evaluation_results.npy'))
+    use_coverage = 'rule_based_coverage' in data.dtype.names
+    if not use_coverage:
+        print('cannot generate precision/coverage curve as no coverage data available.')
+        print('recreate the evaluation_results.npy file')
+        return
+    if data['prediction_confidence'].mean() == 0:
+        print('cannot generate precision/coverage curve as prediction confidence is not available.')
+        print('redo the evaluation by providing nms/npz files that contain prediction confidence')
+        return
+
+    shapes = io_utils.read_test_shapes(dataset_root)
+    score_steps = np.linspace(1.0, 0.5, num=resolution)
+
+    plt.set_cmap('tab10')
+    plots_by_epoch = {}
+
+    epochs = np.unique(data['epoch'])
+    for epoch in epochs:
+        mask = data['epoch'] == epoch
+        epoch_data = data[mask]
+
+        coverages = []
+        success_rates = []
+
+        for score in score_steps:
+            # for all shapes in all views, compute success_rate and coverage for predictions above score
+            # average of those is our value pair for the plot
+            score_data = epoch_data[epoch_data['prediction_confidence'] >= score]
+            if len(score_data) == 0:
+                continue
+            score_coverages = []
+            score_success_rates = []
+            views = np.unique(score_data['view'])
+            for view in views:
+                view_data = score_data[score_data['view'] == view]
+                for shape in shapes:
+                    mask = np.array(view_data['shape'], dtype='<U32') == shape
+                    shape_data = view_data[mask]
+                    if len(shape_data) > 0:
+                        score_coverages.append(np.max(shape_data['rule_based_coverage']))
+                        success = shape_data['simulation_result'] == 0
+                        score_success_rates.append(np.mean(success))
+                    else:
+                        # if no grasps at this confidence level available, then we do not contribute a success rate
+                        # however, the coverage of this shape is zero
+                        score_coverages.append(0)
+
+            # only append if overall coverage is larger than before
+            c = np.mean(score_coverages)
+            s = np.mean(score_success_rates)
+            if len(coverages) == 0 or c > coverages[-1]:
+                coverages.append(c)
+                success_rates.append(s)
+
+        # now interpolate the plot as is usually done for precision-recall-plots
+        # taken from here: https://stackoverflow.com/a/39862264/1264582
+        # running maximum over the reversed vector of precision values, reverse the result back
+        precision = np.array(success_rates)
+        decreasing_max_precision = np.maximum.accumulate(precision[::-1])[::-1]
+
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(coverages, decreasing_max_precision, label='max precision')
+        plt.xlabel('coverage')
+        plt.ylabel('success rate')
+        # plt.axis([0, 1, 0, 1])  # turns out this was not useful, as the relevant part of the figure is quite small
+        fn = f'ep{epoch}_precision_coverage.png'
+        plt.savefig(os.path.join(test_dir, fn))
+        print(f'saved {fn}')
+
+        plots_by_epoch[epoch] = coverages, decreasing_max_precision
+
+    # finally, make a plot with all epochs in it
+    fig, ax = plt.subplots(1, 1)
+    for key, item in plots_by_epoch.items():
+        coverage, success_rate = item
+        ax.plot(coverage, success_rate, label=str(key))
+
+    plt.xlabel('coverage')
+    plt.ylabel('success rate')
+    plt.legend()
+    fn = 'all_epochs_precision_coverage.png'
+    plt.savefig(os.path.join(test_dir, fn))
+    print(f'saved {fn}')

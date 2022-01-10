@@ -18,6 +18,8 @@ def parse_args():
     parser.add_argument('-OMD', '--object_models_dir', type=str,
                         help='if other than GPNet models, please provide path to urdf files of objects.')
     parser.add_argument('--stats_only', action='store_true')
+    parser.add_argument('--plot_res', type=int, default=21,
+                        help='resolution (n data points) for success rate/coverage plots')
     return parser.parse_args()
 
 
@@ -27,8 +29,6 @@ if __name__ == "__main__":
     if not arguments.stats_only:
         evaluate.evaluate(
             arguments.dataset_root,
-            # '/home/rudorfem/dev/exp_GPNet_Deco/multi_view_epochs/gpnet',
-            # '/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test',
             arguments.test_dir,
             arguments.nms,
             arguments.use_sim,
@@ -39,11 +39,15 @@ if __name__ == "__main__":
     evaluate.per_shape_stats(
         arguments.dataset_root,
         arguments.test_dir
-        # '/home/rudorfem/dev/exp_GPNet_Deco/multi_view_epochs/gpnet'
-        # '/home/rudorfem/dev/exp_GPNet_Deco/per-epoch-results/deco_no_sched/test'
     )
 
     evaluate.standard_statistics(
         arguments.dataset_root,
         arguments.test_dir
+    )
+
+    evaluate.precision_coverage_curve(
+        arguments.dataset_root,
+        arguments.test_dir,
+        arguments.plot_res
     )

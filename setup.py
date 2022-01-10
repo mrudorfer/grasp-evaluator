@@ -8,6 +8,7 @@ python_versions = '>=3.6, <3.9'  # probably newer versions work as well
 requirements_default = [
     'numpy',  # for all datastructures
     'tqdm',  # progress bars
+    'matplotlib',  # precision coverage plots
     'attrdict',
     'GPNet-simulator @ git+ssh://git@github.com/mrudorfer/GPNet-simulator'
 ]
