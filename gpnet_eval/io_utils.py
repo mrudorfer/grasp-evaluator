@@ -162,8 +162,11 @@ def read_nms_poses_file(filename):
                 shape_poses[shape].append(grasp)
 
     for shape, grasp_list in shape_poses.items():
-        grasps = np.concatenate(grasp_list)
-        shape_poses[shape] = grasps
+        if len(grasp_list) > 0:
+            grasps = np.concatenate(grasp_list)
+            shape_poses[shape] = grasps
+        else:
+            shape_poses = np.empty((0, 8), dtype=float)
 
     return shape_poses
 
