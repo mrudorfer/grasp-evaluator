@@ -49,8 +49,6 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
     shapes = io_utils.read_test_shapes(dataset_root)
     epoch_list = io_utils.get_epochs_and_views(test_dir)
 
-    # todo temp
-    epoch_list = [epoch_list[0]]
     print(f'test directory: {test_dir}')
     print('detected epochs and views:')
     for epoch, views in epoch_list:
