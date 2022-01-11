@@ -45,7 +45,8 @@ def pairwise_angular_distances(quaternions_1, quaternions_2):
     quaternions_1 = quaternions_1.reshape(-1, 4)
     quaternions_2 = quaternions_2.reshape(-1, 4)
 
-    angles = 2 * np.arccos(np.abs(quaternions_1.dot(np.transpose(quaternions_2, [1, 0]))))
+    # using the minimum to prevent nans due to numerical precision (sometimes values are slightly larger than 1)
+    angles = 2 * np.arccos(np.minimum(1, np.abs(quaternions_1.dot(np.transpose(quaternions_2, [1, 0])))))
     return angles
 
 
