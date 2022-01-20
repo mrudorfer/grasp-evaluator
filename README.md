@@ -11,13 +11,13 @@ This repo also makes use of the [GPNet-simulator](https://github.com/mrudorfer/G
 
 ```
 cd GPNet-evaluator
-pip install .
+python setup.py install
 ```
 
 This will install all dependencies including the GPNet-simulator.
 However, it is recommended to install the simulator manually in editable mode.
 This way the simulator can find the object models and gripper models contained in the package.
-If you install without editable mode, you will need to provide the correct paths yourself.
+If you install without editable mode, you may need to provide the correct paths yourself.
 
 
 ## Usage
