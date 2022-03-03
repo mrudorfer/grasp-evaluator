@@ -4,8 +4,8 @@
 During work on our [L2G: End-to-end Learning to Grasp from Object Point Clouds](https://github.com/antoalli/L2G), we used
 this Python module to evaluate the predicted grasps and compute desired metrics.
 It is based on the evaluation procedure in [GPNet](https://github.com/CZ-Wu/GPNet),
-but extends its functionality by integrating further metrics such as per-shape-statistics as
-well as evaluation based on the predicted confidence score.
+but extends its functionality by integrating further metrics such as per-shape-statistics, evaluation based on the 
+predicted confidence score, and success-coverage plots.
 
 Two different kinds of evaluation are supported:
 - rule-based: compare predictions to grasp annotations from ground-truth dataset
