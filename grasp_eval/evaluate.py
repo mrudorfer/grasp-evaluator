@@ -156,8 +156,9 @@ def evaluate(dataset_root, test_dir, nms, use_sim, object_models_dir=None, cover
     print(f'finished.\nstored all results in {save_file}')
 
     # clean up tmp file
-    os.close(sim_file_handle)
-    os.remove(sim_file)
+    if use_sim:
+        os.close(sim_file_handle)
+        os.remove(sim_file)
 
 
 def per_shape_stats(dataset_root, test_dir):
