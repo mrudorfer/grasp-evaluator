@@ -5,8 +5,7 @@ from . import evaluate
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-DR', '--dataset_root', type=str, default='/home/rudorfem/datasets/GPNet_release_data_fixed/',
-                        help='root directory of the GPNet dataset')
+    parser.add_argument('-DR', '--dataset_root', type=str, help='root directory of the dataset')
     parser.add_argument('-TD', '--test_dir', type=str, help='test folder of the network (containing epoch dirs)')
     parser.add_argument('--nms', action='store_true',
                         help='use this option to use "nms_poses_view0.txt" file instead of all predictions (npz files)')
@@ -16,7 +15,7 @@ def parse_args():
                         help='use this argument to skip computing coverage (shorten computation time). ' +
                         'However, if coverage is present in eval data it will be presented in stats in any case.')
     parser.add_argument('-OMD', '--object_models_dir', type=str,
-                        help='if other than GPNet models, please provide path to urdf files of objects.')
+                        help='please provide path to urdf files of objects (only required if using simulator)')
     parser.add_argument('--stats_only', action='store_true')
     parser.add_argument('--plot_res', type=int, default=21,
                         help='resolution (n data points) for success rate/coverage plots')
